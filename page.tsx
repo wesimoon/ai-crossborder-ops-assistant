@@ -11,6 +11,8 @@ import {
   ClipboardCheck,
   FileSearch,
   FlaskConical,
+  KeyRound,
+  LoaderCircle,
   Pencil,
   Plus,
   Save,
@@ -26,6 +28,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { analyzeWithDeepSeek, testDeepSeekKey, type DeepSeekTheme } from '@/lib/deepseek';
 
 type Review = {
   review_id: string;
@@ -87,6 +90,9 @@ type Insight = {
   scenario: string;
   listingCoverage: string;
   manualRoute?: 'Listing' | '产品待确认' | '暂不处理';
+  aiListingCopy?: string;
+  aiListingPosition?: string;
+  aiMatchedFact?: string;
 };
 
 const TAGS: Record<TagKey, string> = {
@@ -507,6 +513,7 @@ function buildInsights(
 }
 
 function getListingSuggestion(insight: Insight, profile: Profile) {
+  if (insight.aiListingCopy && insight.aiMatchedFact) return insight.aiListingCopy;
   if (
     insight.tag === 'clean' &&
     profile.structure.includes('可') &&
@@ -524,6 +531,10 @@ function getListingSuggestion(insight: Insight, profile: Profile) {
 }
 
 function listingBulletIndex(insight: Insight) {
+  if (insight.aiListingPosition) {
+    const match = insight.aiListingPosition.match(/Bullet Point\s+(\d)/i);
+    if (match) return Number(match[1]) - 1;
+  }
   if (insight.tag === 'temperature') return 1;
   if (insight.tag === 'clean') return 2;
   if (insight.tag === 'portable') return 3;
@@ -531,6 +542,8 @@ function listingBulletIndex(insight: Insight) {
 }
 
 function listingPlacement(insight: Insight) {
+  if (insight.aiListingPosition)
+    return insight.aiListingPosition;
   const index = listingBulletIndex(insight);
   if (index < 0) return '不建议修改 Listing';
   const image = imageSuggestion(insight);
@@ -556,6 +569,7 @@ function imageSuggestion(insight: Insight) {
 }
 
 function factEvidence(insight: Insight, profile: Profile) {
+  if (insight.aiMatchedFact) return insight.aiMatchedFact;
   if (insight.tag === 'clean') return profile.structure;
   if (insight.tag === 'temperature') return profile.verifiedPerformance;
   if (insight.tag === 'portable') return profile.confirmedBenefits;
@@ -618,6 +632,12 @@ function finalDecision(insight: Insight) {
 }
 
 function decisionCta(insight: Insight, profile: Profile) {
+  if (insight.aiListingCopy && insight.aiMatchedFact)
+    return {
+      label: '生成 Listing 建议',
+      outcome: '已确认' as ActionStatus,
+      openListing: true,
+    };
   if (insight.tag === 'other') {
     if (insight.manualRoute === '产品待确认')
       return {
@@ -672,6 +692,42 @@ function decisionCta(insight: Insight, profile: Profile) {
   };
 }
 
+function themesToInsights(themes: DeepSeekTheme[]): Insight[] {
+  return themes.map((theme, index) => ({
+    id: `ai-${theme.key}-${index}`,
+    tag: 'other' as TagKey,
+    sentiment: theme.sentiment,
+    title: theme.title,
+    need: theme.userNeed,
+    classification: theme.classification,
+    productMatch: theme.productMatch,
+    action: theme.recommendedAction,
+    reviewIds: theme.reviewIds,
+    confirmed: false,
+    status: '待确认' as ActionStatus,
+    listingAdopted: false,
+    priority: theme.priority,
+    priorityReason: theme.priorityReason,
+    severity: theme.severity,
+    scenario: theme.scenario,
+    listingCoverage: theme.listingCoverage,
+    manualRoute:
+      theme.route === 'Listing' || theme.route === '产品待确认' || theme.route === '暂不处理'
+        ? theme.route
+        : undefined,
+    aiListingCopy:
+      theme.route === 'Listing' && theme.matchedFact && theme.listingCopy
+        ? theme.listingCopy
+        : undefined,
+    aiListingPosition: theme.listingPosition || undefined,
+    aiMatchedFact: theme.matchedFact || undefined,
+  })).sort(
+    (a, b) =>
+      PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority] ||
+      b.reviewIds.length - a.reviewIds.length,
+  );
+}
+
 export default function Home() {
   const [profile, setProfile] = useState<Profile>(defaultProfile),
     [editingProfile, setEditingProfile] = useState(false),
@@ -685,7 +741,12 @@ export default function Home() {
     [listingInsightId, setListingInsightId] = useState<string | null>(null),
     [copiedKey, setCopiedKey] = useState<string | null>(null),
     [showAllInsights, setShowAllInsights] = useState(false),
-    [editingJudgmentId, setEditingJudgmentId] = useState<string | null>(null);
+    [editingJudgmentId, setEditingJudgmentId] = useState<string | null>(null),
+    [deepSeekKey, setDeepSeekKey] = useState(''),
+    [showDeepSeekSettings, setShowDeepSeekSettings] = useState(false),
+    [deepSeekStatus, setDeepSeekStatus] = useState<'idle' | 'testing' | 'connected' | 'error'>('idle'),
+    [deepSeekMessage, setDeepSeekMessage] = useState(''),
+    [isAnalyzing, setIsAnalyzing] = useState(false);
   useEffect(() => {
     const stored = window.localStorage.getItem(
       'crossborder-product-profile-v1',
@@ -695,6 +756,13 @@ export default function Home() {
         const parsed = JSON.parse(stored);
         setTimeout(() => setProfile(parsed), 0);
       } catch {}
+    const storedKey = window.localStorage.getItem('crossborder-deepseek-key-v1');
+    if (storedKey) {
+      setTimeout(() => {
+        setDeepSeekKey(storedKey);
+        setDeepSeekStatus('connected');
+      }, 0);
+    }
   }, []);
   const cleaned = cleanReviews(sourceRows),
     tagged = cleaned.valid.map(tagReview);
@@ -704,6 +772,10 @@ export default function Home() {
       JSON.stringify(profile),
     );
     setEditingProfile(false);
+    if (insights.length) {
+      setInsights([]);
+      setStep(sourceRows.length ? 1 : 0);
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 1800);
   };
@@ -741,15 +813,55 @@ export default function Home() {
     }
     event.target.value = '';
   };
-  const runMockAnalysis = () => {
-      setInsights(
-        buildInsights(
-          tagged,
-          profile,
-          fileName !== 'sample-insulated-bottle-reviews.csv',
-        ),
-      );
-      setStep(6);
+  const isSample = fileName === 'sample-insulated-bottle-reviews.csv';
+  const runAnalysis = async () => {
+      if (isSample) {
+        setInsights(buildInsights(tagged, profile));
+        setStep(6);
+        return;
+      }
+      if (!deepSeekKey) {
+        setShowDeepSeekSettings(true);
+        setDeepSeekMessage('分析陌生 CSV 前，请先连接 DeepSeek API。');
+        return;
+      }
+      setIsAnalyzing(true);
+      setCsvError('');
+      try {
+        const themes = await analyzeWithDeepSeek(deepSeekKey, profile, cleaned.valid);
+        if (!themes.length) throw new Error('未生成可处理的洞察，请检查评论内容');
+        setInsights(themesToInsights(themes));
+        setStep(6);
+      } catch (error) {
+        setCsvError(error instanceof Error ? error.message : 'DeepSeek 分析失败');
+      } finally {
+        setIsAnalyzing(false);
+      }
+    },
+    connectDeepSeek = async () => {
+      if (!deepSeekKey.trim()) {
+        setDeepSeekStatus('error');
+        setDeepSeekMessage('请输入 API Key');
+        return;
+      }
+      setDeepSeekStatus('testing');
+      setDeepSeekMessage('正在测试连接…');
+      try {
+        await testDeepSeekKey(deepSeekKey);
+        window.localStorage.setItem('crossborder-deepseek-key-v1', deepSeekKey.trim());
+        setDeepSeekKey(deepSeekKey.trim());
+        setDeepSeekStatus('connected');
+        setDeepSeekMessage('连接成功，密钥已保存在此设备的浏览器中。');
+      } catch (error) {
+        setDeepSeekStatus('error');
+        setDeepSeekMessage(error instanceof Error ? error.message : '连接失败');
+      }
+    },
+    disconnectDeepSeek = () => {
+      window.localStorage.removeItem('crossborder-deepseek-key-v1');
+      setDeepSeekKey('');
+      setDeepSeekStatus('idle');
+      setDeepSeekMessage('已从此设备删除 API Key。');
     },
     updateInsight = (id: string, patch: Partial<Insight>) =>
       setInsights((a) => a.map((i) => (i.id === id ? { ...i, ...patch } : i))),
@@ -948,7 +1060,13 @@ export default function Home() {
           <h1>AI 跨境电商运营决策助手</h1>
           <p>AI Cross-border Ops Decision Assistant</p>
         </div>
-        <span className="demo-badge">V1 Demo · Mock AI</span>
+        <button
+          className={`api-status ${deepSeekStatus === 'connected' ? 'connected' : ''}`}
+          onClick={() => setShowDeepSeekSettings(true)}
+        >
+          <KeyRound size={14} />
+          {deepSeekStatus === 'connected' ? 'DeepSeek 已连接' : '连接 DeepSeek'}
+        </button>
       </header>
       <div className="notice">
         <FlaskConical size={17} />
@@ -1168,13 +1286,18 @@ export default function Home() {
                 </div>
               </div>
               <div className="run-row">
-                <p>清洗由程序完成。Mock AI 按预定义词表理解每条有效评论。</p>
+                <p>
+                  {isSample
+                    ? 'Sample 使用稳定演示规则；不消耗 API。'
+                    : 'DeepSeek 将结合当前产品档案理解陌生评论。'}
+                </p>
                 <button
                   className="button primary run"
-                  onClick={runMockAnalysis}
+                  onClick={runAnalysis}
+                  disabled={isAnalyzing}
                 >
-                  <Sparkles size={16} />
-                  开始分析
+                  {isAnalyzing ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
+                  {isAnalyzing ? '正在语义分析…' : '开始分析'}
                 </button>
               </div>
             </>
@@ -1228,7 +1351,7 @@ export default function Home() {
           </div>
           <p className="method-note">
             <ShieldCheck size={16} />
-            数量、比例与排序由程序计算；Mock AI 只负责标签和运营判断。
+            数量与比例由程序计算；陌生 CSV 的语义归纳使用 DeepSeek，最终决定仍需人工确认。
           </p>
         </section>
         {step === 6 && (
@@ -2109,6 +2232,55 @@ export default function Home() {
           )}
         </Sheet>
       </div>
+      {showDeepSeekSettings && (
+        <div className="api-modal-backdrop" role="presentation">
+          <dialog open className="api-modal" aria-labelledby="deepseek-title">
+            <div className="api-modal-heading">
+              <div>
+                <span className="eyebrow">本地 AI 设置</span>
+                <h2 id="deepseek-title">连接 DeepSeek API</h2>
+              </div>
+              <button className="modal-close" onClick={() => setShowDeepSeekSettings(false)} aria-label="关闭">×</button>
+            </div>
+            <p>
+              用于分析陌生 CSV。Key 仅保存在这台设备的当前浏览器，
+              不会写入 GitHub 或我们的云端。
+            </p>
+            <label className="api-key-field">
+              <span>DeepSeek API Key</span>
+              <input
+                type="password"
+                autoComplete="off"
+                placeholder="sk-..."
+                value={deepSeekKey}
+                onChange={(event) => {
+                  setDeepSeekKey(event.target.value);
+                  setDeepSeekStatus('idle');
+                  setDeepSeekMessage('');
+                }}
+              />
+            </label>
+            <div className="api-security-note">
+              <ShieldCheck size={18} />
+              <span>请仅在个人可信设备上保存。分析时，Key 与必要数据会直接发送给 DeepSeek 官方 API。</span>
+            </div>
+            {deepSeekMessage && (
+              <p className={`api-message ${deepSeekStatus}`}>{deepSeekMessage}</p>
+            )}
+            <div className="api-modal-actions">
+              {deepSeekKey && deepSeekStatus === 'connected' && (
+                <button className="button secondary" onClick={disconnectDeepSeek}>
+                  删除本地密钥
+                </button>
+              )}
+              <button className="button primary" disabled={deepSeekStatus === 'testing'} onClick={connectDeepSeek}>
+                {deepSeekStatus === 'testing' ? <LoaderCircle className="spin" size={16} /> : <KeyRound size={16} />}
+                {deepSeekStatus === 'testing' ? '正在测试…' : '测试并保存'}
+              </button>
+            </div>
+          </dialog>
+        </div>
+      )}
       <footer>
         CODE 负责确定性任务 · AI 负责语言理解 · HUMAN 负责产品事实与最终决策
       </footer>

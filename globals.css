@@ -586,7 +586,6 @@ main {
 .insight-fields span,
 .classification > span {
   font-size: 11px;
-  text-transform: uppercase;
   letter-spacing: 0.06em;
   color: #7a878e;
   font-weight: 800;
@@ -1323,6 +1322,106 @@ footer {
   font-size: 12px;
   padding: 22px;
 }
+.api-status {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #c9d4d8;
+  border-radius: 999px;
+  background: white;
+  color: var(--navy);
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.api-status.connected {
+  border-color: #94c9bd;
+  background: var(--teal-soft);
+  color: #135e58;
+}
+.api-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(11, 28, 38, 0.48);
+}
+.api-modal {
+  width: min(520px, 100%);
+  border-radius: 14px;
+  background: white;
+  box-shadow: 0 22px 70px rgba(10, 28, 39, 0.28);
+  padding: 24px;
+}
+.api-modal-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.api-modal-heading h2 {
+  margin: 4px 0 0;
+  color: var(--navy);
+}
+.api-modal > p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.modal-close {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: #eef2f3;
+  color: var(--navy);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+.api-key-field {
+  display: grid;
+  gap: 7px;
+  margin-top: 18px;
+}
+.api-key-field span {
+  color: var(--navy);
+  font-size: 12px;
+  font-weight: 800;
+}
+.api-key-field input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 11px 12px;
+}
+.api-security-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 12px;
+  border-radius: 8px;
+  background: #f3f7f8;
+  padding: 11px;
+  color: #52646e;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.api-security-note svg { flex: 0 0 auto; color: var(--teal); }
+.api-message { margin: 12px 0 0 !important; font-weight: 700; }
+.api-message.connected { color: #137369 !important; }
+.api-message.error { color: #a23c32 !important; }
+.api-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 20px;
+}
+.spin { animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 800px) {
   .topbar {
     padding: 0 16px;

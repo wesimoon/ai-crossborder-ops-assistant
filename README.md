@@ -1,6 +1,10 @@
 # AI Cross-border Ops Decision Assistant
 
-A lightweight V1 demo for turning customer reviews into traceable ecommerce operations decisions. It combines deterministic statistics, predefined review rules, Product Profile facts, human review, Claim Check, Listing edits, and a final action plan.
+A lightweight V1 demo for turning customer reviews into traceable ecommerce operations decisions. It combines deterministic statistics, product-aware DeepSeek analysis for uploaded CSV files, Product Profile facts, human review, Claim Check, Listing edits, and a final action plan.
+
+## Live demo
+
+https://wesimoon.github.io/ai-crossborder-ops-assistant/
 
 ## What it demonstrates
 
@@ -11,9 +15,10 @@ A lightweight V1 demo for turning customer reviews into traceable ecommerce oper
 - Adoptable and reversible Listing suggestions
 - Product / supply-chain collaboration cards
 - A copyable final operations action plan
-- A human-classification fallback for feedback outside the stable rule set
+- Optional bring-your-own DeepSeek API connection for unfamiliar products and CSV files
+- A human-classification fallback for low-confidence feedback
 
-This is a portfolio demo. Its sample data and rule-based analysis are not a live market-research service, and it does not call a production LLM.
+The built-in Sample Data remains available without an API key. An uploaded CSV requires the user to connect their own DeepSeek API key and is analyzed against the Product Profile currently saved in the browser.
 
 ## Run locally
 
@@ -30,13 +35,14 @@ Then open the local URL printed by the development server.
 
 ```bash
 npm run build
+npm run build:pages
 ```
 
-The built-in Sample Data is the regression fixture for the five core insights: leakage, cleaning, temperature retention, portability, and appearance. Unknown feedback is shown as evidence for human classification instead of being converted into generated topic names.
+The built-in Sample Data is the regression fixture for the five core insights: leakage, cleaning, temperature retention, portability, and appearance. Uploaded CSV files do not use those bottle-specific rules: DeepSeek receives the current Product Profile and returns structured themes, while low-confidence feedback remains available for human classification.
 
 ## Privacy
 
-CSV processing happens in the browser in this V1. Do not upload sensitive or personal customer information when adapting the demo for real use.
+The DeepSeek API key is stored only in the current browser's local storage and is never committed to this repository. During real analysis, the browser sends the key, current Product Profile, and review content directly to DeepSeek's official API. Use this feature only on a trusted personal device and do not upload sensitive or personal customer information.
 
 ## License
 

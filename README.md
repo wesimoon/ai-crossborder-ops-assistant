@@ -6,6 +6,11 @@ A lightweight V1 demo for turning customer reviews into traceable ecommerce oper
 
 https://wesimoon.github.io/ai-crossborder-ops-assistant/
 
+GitHub Pages can publish the checked-in production build without Actions: open
+`Settings > Pages`, choose `Deploy from a branch`, then select `main` and
+`/docs`. The `docs` directory contains the deployable site; the remaining files
+are the open-source project.
+
 ## What it demonstrates
 
 - Fixed-schema CSV import: `review_id`, `rating`, `review_title`, `review_text`
